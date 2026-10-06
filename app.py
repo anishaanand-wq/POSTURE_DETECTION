@@ -71,7 +71,7 @@ st.markdown(
 )
 
 # Load class names
-with open("classnames.json", "r") as f:
+with open("class_names.json", "r") as f:
     CLASS_NAMES = json.load(f)
 
 # Load ONNX model only once
