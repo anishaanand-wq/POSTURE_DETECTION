@@ -78,7 +78,7 @@ with open("class_names.json", "r") as f:
 @st.cache_resource
 def load_model():
     return ort.InferenceSession(
-        "babysleeppostureeffnetb0.onnx",
+        "baby_sleep_posture_effnetb0.onnx",
         providers=["CPUExecutionProvider"]
     )
 
