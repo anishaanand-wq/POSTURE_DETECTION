@@ -1,12 +1,4 @@
-torch
-torchvision
-numpy
-pandas
-scikit-learn
-matplotlib
-seaborn
+streamlit
+onnxruntime
 pillow
-onnx
-onnxscript
-streamlit==1.39.0
-onnxruntime==1.19.2
+numpy
