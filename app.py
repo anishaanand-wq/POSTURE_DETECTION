@@ -1,89 +1,147 @@
 import json
 import time
-import streamlit as st
-import numpy as np
-import onnxruntime as ort
-from PIL import Image
 import io
 
-# Page settings
+import numpy as np
+import onnxruntime as ort
+import streamlit as st
+from PIL import Image
+
+# ---------------- PAGE SETTINGS ----------------
+
 st.set_page_config(
     page_title="Baby Sleep Posture Detector",
-    page_icon="👶",
-    layout="centered"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Custom UI styling
+# ---------------- CUSTOM CSS ----------------
+
 st.markdown(
     """
     <style>
         .main {
-            background: linear-gradient(180deg, #f0f9ff 0%, #ffffff 100%);
+            background: linear-gradient(180deg, #eff6ff 0%, #ffffff 45%, #f0fdf4 100%);
         }
-        .title {
+
+        .hero {
+            background: linear-gradient(135deg, #eff6ff 0%, #ffffff 55%, #f0fdf4 100%);
+            border: 1px solid #dbeafe;
+            border-radius: 22px;
+            padding: 35px 30px;
             text-align: center;
-            font-size: 2.4rem;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 6px 14px;
+            border-radius: 999px;
+            margin-bottom: 15px;
+            letter-spacing: 0.4px;
+        }
+
+        .hero-title {
+            font-size: 2.7rem;
             font-weight: 800;
             color: #0f172a;
+            margin: 0;
+            line-height: 1.2;
         }
-        .subtitle {
-            text-align: center;
+
+        .hero-subtitle {
             color: #475569;
             font-size: 1.05rem;
-            margin-bottom: 25px;
+            margin-top: 12px;
+            margin-bottom: 18px;
         }
-        .result-card {
+
+        .hero-tags {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .hero-tags span {
             background: #ffffff;
-            padding: 25px;
-            border-radius: 18px;
-            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
-            border: 1px solid #e2e8f0;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 7px 14px;
+            border-radius: 999px;
         }
-        .prediction {
-            font-size: 1.7rem;
+
+        .result-card {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 8px 25px rgba(15, 23, 42, 0.08);
+        }
+
+        .prediction-text {
+            font-size: 2rem;
             font-weight: 800;
             color: #0f172a;
         }
-        .confidence {
-            color: #2563eb;
+
+        .confidence-text {
+            font-size: 1.2rem;
             font-weight: 700;
+            color: #2563eb;
         }
-        .bar-container {
+
+        .bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 4px;
+        }
+
+        .bar-bg {
             background: #e2e8f0;
             height: 12px;
             border-radius: 999px;
             overflow: hidden;
-            margin-bottom: 12px;
+            margin-bottom: 14px;
         }
-        .bar {
+
+        .bar-fill {
             height: 100%;
             border-radius: 999px;
         }
+
+        .history-card {
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 10px;
+        }
+
         .disclaimer {
-            font-size: 0.8rem;
-            color: #64748b;
             text-align: center;
-            margin-top: 20px;
+            color: #64748b;
+            font-size: 0.82rem;
+            margin-top: 25px;
         }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# Load class names
-with open("class_names.json", "r") as f:
-    CLASS_NAMES = json.load(f)
+# ---------------- MODEL CONFIGURATION ----------------
 
-# Load ONNX model only once
-@st.cache_resource
-def load_model():
-    return ort.InferenceSession(
-        "baby_sleep_posture_effnetb0.onnx",
-        providers=["CPUExecutionProvider"]
-    )
-
-session = load_model()
-INPUT_NAME = session.get_inputs()[0].name
+MODEL_PATH = "baby_sleep_posture_effnetb0.onnx"
+CLASS_NAMES_PATH = "class_names.json"
 
 IMG_SIZE = 224
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -96,7 +154,25 @@ CLASS_COLORS = {
 }
 
 
-def preprocess(image):
+@st.cache_resource
+def load_model():
+    session = ort.InferenceSession(
+        MODEL_PATH,
+        providers=["CPUExecutionProvider"]
+    )
+    return session
+
+
+with open(CLASS_NAMES_PATH, "r") as f:
+    CLASS_NAMES = json.load(f)
+
+session = load_model()
+INPUT_NAME = session.get_inputs()[0].name
+
+
+# ---------------- HELPER FUNCTIONS ----------------
+
+def preprocess_image(image):
     image = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
 
     arr = np.asarray(image).astype(np.float32) / 255.0
@@ -107,10 +183,10 @@ def preprocess(image):
     return arr.astype(np.float32)
 
 
-def predict(image):
-    start = time.time()
+def predict_posture(image):
+    start_time = time.time()
 
-    input_tensor = preprocess(image)
+    input_tensor = preprocess_image(image)
 
     logits = session.run(None, {INPUT_NAME: input_tensor})[0][0]
 
@@ -124,47 +200,181 @@ def predict(image):
 
     prediction = max(probabilities, key=probabilities.get)
     confidence = probabilities[prediction]
-    processing_time = round((time.time() - start) * 1000, 2)
+    processing_time = round((time.time() - start_time) * 1000, 2)
 
     return prediction, confidence, probabilities, processing_time
 
 
-# UI
-st.markdown('<h1 class="title">👶 Baby Sleep Posture Detector</h1>', unsafe_allow_html=True)
+def show_probability_bars(probabilities):
+    for class_name, probability in probabilities.items():
+        st.markdown(
+            f"""
+            <div class="bar-label">
+                <span>{class_name.capitalize()}</span>
+                <span>{probability * 100:.1f}%</span>
+            </div>
+            <div class="bar-bg">
+                <div class="bar-fill" style="
+                    width:{probability * 100}%;
+                    background:{CLASS_COLORS[class_name]};
+                "></div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+# ---------------- SESSION STATE ----------------
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+# ---------------- SIDEBAR ----------------
+
+with st.sidebar:
+    st.markdown("## Baby Sleep Posture Detector")
+    st.markdown(
+        """
+        Upload or capture a baby sleeping image to detect whether the baby is
+        sleeping in a **Left**, **Prone**, or **Supine** posture.
+        """
+    )
+
+    st.divider()
+
+    st.markdown("### How to Use")
+    st.markdown(
+        """
+        1. Upload an image or take a photo  
+        2. Click **Analyze Posture**  
+        3. View the predicted posture and confidence  
+        4. Download the prediction report if needed  
+        """
+    )
+
+    st.divider()
+
+    st.markdown("### Model Information")
+    st.markdown(
+        """
+        - **Model:** EfficientNet-B0  
+        - **Input Size:** 224 × 224  
+        - **Classes:** Left, Prone, Supine  
+        - **Deployment:** ONNX Runtime  
+        """
+    )
+
+    st.divider()
+
+    st.markdown("### Prediction History")
+
+    if st.session_state.history:
+        for item in reversed(st.session_state.history[-5:]):
+            st.markdown(
+                f"""
+                <div class="history-card">
+                    <b>{item['prediction'].capitalize()}</b><br>
+                    Confidence: {item['confidence'] * 100:.1f}%<br>
+                    <span style="color:#64748b; font-size:0.8rem;">
+                        {item['time']}
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+    else:
+        st.info("No predictions yet.")
+
+# ---------------- MAIN HEADER ----------------
+
 st.markdown(
-    '<p class="subtitle">Upload a photo of a sleeping baby to detect whether the baby is sleeping left, prone, or supine.</p>',
+    """
+    <div class="hero">
+        <div class="hero-badge">AI-Based Infant Safety Monitoring</div>
+
+        <h1 class="hero-title">Baby Sleep Posture Detector</h1>
+
+        <p class="hero-subtitle">
+            Upload or capture a baby sleeping image to identify whether the baby
+            is in a <b>Left</b>, <b>Prone</b>, or <b>Supine</b> sleeping posture.
+        </p>
+
+        <div class="hero-tags">
+            <span>EfficientNet-B0</span>
+            <span>ONNX Runtime</span>
+            <span>Real-Time Prediction</span>
+        </div>
+    </div>
+    """,
     unsafe_allow_html=True
 )
 
-uploaded_file = st.file_uploader(
-    "Choose a baby sleeping image",
-    type=["jpg", "jpeg", "png", "webp"]
-)
+# ---------------- INPUT TABS ----------------
 
-if uploaded_file is not None:
-    image = Image.open(io.BytesIO(uploaded_file.getvalue()))
+tab1, tab2 = st.tabs(["Upload Image", "Use Camera"])
 
-    col1, col2 = st.columns(2)
+image = None
 
-    with col1:
-        st.image(image, caption="Uploaded image", use_container_width=True)
+with tab1:
+    uploaded_file = st.file_uploader(
+        "Choose a baby sleeping image",
+        type=["jpg", "jpeg", "png", "webp"]
+    )
 
-    with col2:
-        if st.button("Analyze Posture", use_container_width=True):
-            with st.spinner("Analyzing image..."):
-                prediction, confidence, probabilities, processing_time = predict(image)
+    if uploaded_file is not None:
+        image = Image.open(io.BytesIO(uploaded_file.getvalue()))
+
+with tab2:
+    camera_image = st.camera_input("Take a photo of the sleeping baby")
+
+    if camera_image is not None:
+        image = Image.open(io.BytesIO(camera_image.getvalue()))
+
+# ---------------- PREDICTION SECTION ----------------
+
+if image is not None:
+
+    left_col, right_col = st.columns([1, 1])
+
+    with left_col:
+        st.image(
+            image,
+            caption="Selected baby sleeping image",
+            use_container_width=True
+        )
+
+        analyze_button = st.button(
+            "Analyze Posture",
+            use_container_width=True,
+            type="primary"
+        )
+
+        if st.button("Reset", use_container_width=True):
+            st.rerun()
+
+    with right_col:
+        if analyze_button:
+            with st.spinner("Analyzing baby sleeping posture..."):
+                prediction, confidence, probabilities, processing_time = predict_posture(image)
+
+            st.session_state.history.append(
+                {
+                    "prediction": prediction,
+                    "confidence": confidence,
+                    "time": time.strftime("%d %b %Y, %I:%M %p")
+                }
+            )
 
             st.markdown(
                 f"""
                 <div class="result-card">
-                    <p class="prediction">
-                        Predicted posture: {prediction.capitalize()}
+                    <p class="prediction-text">
+                        Predicted Posture: {prediction.capitalize()}
                     </p>
-                    <p>
-                        Confidence: <span class="confidence">
-                        {confidence * 100:.1f}%</span>
+                    <p class="confidence-text">
+                        Confidence: {confidence * 100:.1f}%
                     </p>
-                    <p style="color:#64748b; font-size:0.9rem;">
+                    <p style="color:#64748b;">
                         Processing time: {processing_time} ms
                     </p>
                 </div>
@@ -172,40 +382,42 @@ if uploaded_file is not None:
                 unsafe_allow_html=True
             )
 
-            st.markdown("### Posture probabilities")
+            st.markdown("### Posture Probabilities")
+            show_probability_bars(probabilities)
+
+            report = (
+                "Baby Sleep Posture Detection Report\n"
+                "-----------------------------------\n"
+                f"Predicted Posture: {prediction}\n"
+                f"Confidence: {confidence * 100:.2f}%\n"
+                f"Processing Time: {processing_time} ms\n\n"
+                "Class Probabilities:\n"
+            )
 
             for class_name, probability in probabilities.items():
-                st.markdown(
-                    f"""
-                    <div style="margin-bottom:15px;">
-                        <div style="
-                            display:flex;
-                            justify-content:space-between;
-                            font-weight:600;
-                            color:#334155;
-                            margin-bottom:5px;
-                        ">
-                            <span>{class_name.capitalize()}</span>
-                            <span>{probability * 100:.1f}%</span>
-                        </div>
-                        <div class="bar-container">
-                            <div class="bar" style="
-                                width:{probability * 100}%;
-                                background:{CLASS_COLORS[class_name]};
-                            "></div>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                report += f"{class_name}: {probability * 100:.2f}%\n"
+
+            st.download_button(
+                label="Download Prediction Report",
+                data=report,
+                file_name="baby_sleep_posture_report.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+
+        else:
+            st.info("Click **Analyze Posture** to get the prediction.")
 
 else:
-    st.info("Please upload a baby sleeping image to begin.")
+    st.info("Please upload an image or capture a photo to begin.")
+
+# ---------------- DISCLAIMER ----------------
 
 st.markdown(
     """
     <p class="disclaimer">
-        This application is for educational purposes only and should not replace professional medical advice.
+        This application is developed for educational and research purposes only.
+        It should not be used as a replacement for professional medical advice or baby-monitoring systems.
     </p>
     """,
     unsafe_allow_html=True
